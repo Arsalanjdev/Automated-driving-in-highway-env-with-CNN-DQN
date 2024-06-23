@@ -1,10 +1,10 @@
 # Automated-driving-in-highway-env-with-CNN-DQN
 This repository presents a project focused on automated driving in the highway-env environment using Convolutional Neural Networks (CNN) and Deep Q-Networks (DQN).
 
-#How to run:
+# How to run:
 Run main.py.
 
-#Todo:
+# Todo:
 - Change the architecture of the CNN network for a better result
 - Reduce the computational load
 - Try for a faster convergence
