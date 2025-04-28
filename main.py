@@ -1,7 +1,8 @@
 import gymnasium as gym
-from matplotlib import pyplot as plt
-
+import highway_env
 from agent import DQNAgent
+import torch
+torch.cuda.empty_cache()
 
 configs = {
     "observation": {
@@ -16,8 +17,7 @@ configs = {
     "vehicles_count": 30,
 }
 
-env = gym.make("highway-v0")
-env.configure(configs)
+env = gym.make("highway-v0", config=configs)
 print(env.reset())
 
 obs, info = env.reset()
