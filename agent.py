@@ -22,14 +22,14 @@ class DQNAgent:
         self.env = env
         self.epsilon_start = 0.99
         self.epsilon_end = 0.1
-        self.epsilon_decay = 150
+        self.epsilon_decay = 100
 
         self.batch_size = 128
         self.hidden_size = 128
 
         self.gamma = 0.99
         self.action_size = env.action_space.n
-        self.learning_rate = 0.001
+        self.learning_rate = 0.0001
         self.num_episode = 1000
         self.target_update = 10
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,11 +43,11 @@ class DQNAgent:
         self.target_network.eval()
         self.optimizer = torch.optim.Adam(self.policy_network.parameters(),
                                        lr=self.learning_rate)
-        self.loss_function = F.mse_loss
+        self.loss_function = F.huber_loss
         self.is_scheduled = False
         self.reward_improvement_threshold = 5.0
         self.early_stopping_patience = 10
-        self.scheduler = StepLR(self.optimizer, step_size=100, gamma=self.gamma)
+        self.scheduler = StepLR(self.optimizer, step_size=100, gamma=0.5)
 
     def _get_log_path(self):
         return "./logs/run" + datetime.now().strftime("%Y%m%d-%H%M%S") + "/"
