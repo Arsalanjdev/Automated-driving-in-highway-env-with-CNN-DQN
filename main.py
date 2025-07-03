@@ -41,7 +41,7 @@ while True:
     buffer.append(exp)
     ep_reward += reward
 
-    if total_steps > 10 and total_steps % 4 == 0:
+    if total_steps > 100 and total_steps % 4 == 0:
         optimizer.zero_grad()
         agent.online_net.train()
         loss: Tensor = agent.calculate_loss(batch=buffer)
@@ -50,7 +50,7 @@ while True:
         optimizer.step()
         torch.cuda.empty_cache()
 
-    if total_steps % 100 == 0:
+    if total_steps % 500 == 0:
         agent.target_net.load_state_dict(agent.online_net.state_dict())
 
     if done or trunc:

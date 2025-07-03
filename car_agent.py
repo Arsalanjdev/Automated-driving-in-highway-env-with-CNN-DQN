@@ -82,7 +82,7 @@ class CarAgent:
         device: torch.device,
         epsilon_start: float = 0.99,
         epsilon_stop: float = 0.1,
-        epsilon_decay_rate: int = 200000,
+        epsilon_decay_rate: int = 100000,
         gamma: float = 0.99,
     ):
         self.action_size = action_size
