@@ -7,7 +7,7 @@ from langchain_core.utils.mustache import render
 from agent import DQNAgent
 import torch
 from torch import Tensor
-from car_agent import CarAgent, ReplayBuffer, Experience
+from car_agent import CarAgent, ReplayBuffer, Experience, NstepReplayBuffer
 
 config = {
     "observation": {
@@ -23,7 +23,7 @@ config = {
 env = gym.make("highway-v0", config=config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 agent = CarAgent(4, 5, device)
-buffer = ReplayBuffer(device, 512)
+buffer = NstepReplayBuffer(device, maxlen=512)
 optimizer = torch.optim.Adam(agent.online_net.parameters(), lr=0.0001)
 obs, _ = env.reset()
 ep_reward = 0

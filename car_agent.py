@@ -74,6 +74,40 @@ class ReplayBuffer:
             return self.batch_to_tensor(samples)
 
 
+class NstepReplayBuffer(ReplayBuffer):
+    def __init__(
+        self,
+        device: torch.device,
+        gamma: float = 0.99,
+        maxlen: int = 512,
+        nstep: int = 5,
+    ):
+        super().__init__(device=device, maxlen=maxlen)
+        self.gamma = gamma
+        self.nstep = nstep
+        self.temp_buffer: deque[Experience] = deque(maxlen=nstep)
+
+    def append(self, exp: Experience):
+        self.temp_buffer.append(exp)
+        if len(self.temp_buffer) >= self.nstep or exp.done:
+            state = self.temp_buffer[0].state
+            action = self.temp_buffer[0].action
+
+            reward = sum(
+                (
+                    float(exper.reward * (self.gamma**i))
+                    for i, exper in enumerate(self.temp_buffer)
+                )
+            )
+
+            next_state = self.temp_buffer[-1].next_state
+            done = self.temp_buffer[-1].done
+
+            replay_experience = Experience(state, action, reward, next_state, done)
+            super().append(replay_experience)
+            self.temp_buffer.clear()
+
+
 class CarAgent:
     def __init__(
         self,
