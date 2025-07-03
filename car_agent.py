@@ -9,15 +9,13 @@ from torch import Tensor
 from net import HighwayCNN
 import torch.nn as nn
 
-Observation = np.ndarray[Tuple[float, float, float], np.dtype[np.float32]]
-
 
 @dataclass
 class Experience:
-    state: Observation
+    state: Tensor
     action: int
     reward: float
-    next_state: Observation
+    next_state: Tensor
     done: bool
 
 
@@ -30,25 +28,33 @@ class ReplayBuffer:
         return len(self.queue)
 
     def append(self, exp: Experience):
-        self.queue.append(exp)
+        state_t = torch.as_tensor(exp.state, dtype=torch.float32, device=self.device)
+        next_state_t = torch.as_tensor(
+            exp.next_state, dtype=torch.float32, device=self.device
+        )
+        self.queue.append(
+            Experience(
+                state_t,
+                exp.action,
+                exp.reward,
+                next_state_t,
+                exp.done,
+            )
+        )
 
     def batch_to_tensor(
         self, batch: list[Experience]
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         states, actions, rewards, next_states, dones = [], [], [], [], []
         for exp in batch:
-            states.append(
-                torch.as_tensor(exp.state, dtype=torch.float32, device=self.device)
-            )
+            states.append(exp.state)
             actions.append(
                 torch.as_tensor(exp.action, dtype=torch.long, device=self.device)
             )
             rewards.append(
                 torch.as_tensor(exp.reward, dtype=torch.float32, device=self.device)
             )
-            next_states.append(
-                torch.as_tensor(exp.next_state, dtype=torch.float32, device=self.device)
-            )
+            next_states.append(exp.next_state)
             dones.append(
                 torch.as_tensor(exp.done, dtype=torch.float32, device=self.device)
             )
@@ -100,6 +106,8 @@ class CarAgent:
             )
 
     def act(self, observation):
+        if self.epsilon_current > random.random():
+            return random.randint(0, self.action_size - 1)
         # tensorize
         obs_t: Tensor = torch.as_tensor(
             observation, dtype=torch.float32, device=self.device
@@ -108,8 +116,8 @@ class CarAgent:
         self.online_net.eval()
         with torch.no_grad():
             qs: Tensor = self.online_net(obs_t)
-            best_q = qs.argmax(dim=1)[0]
-        return best_q
+            best_q = qs.argmax(dim=1)
+        return best_q.item()
 
     def calculate_loss(self, batch: ReplayBuffer, k: int = 128):
         (
@@ -130,8 +138,8 @@ class CarAgent:
             # evaluation Double dqn
             evaluated_qs: Tensor = self.target_net(sampled_next_state)
             evaluated_qs = evaluated_qs.gather(1, next_actions).squeeze(1)
-
         sampled_done = sampled_done.float()
 
         predicted_qs = sampled_reward + (1.0 - sampled_done) * evaluated_qs * self.gamma
-        return torch.nn.MSELoss()(current_qs, predicted_qs)
+
+        return torch.nn.SmoothL1Loss()(current_qs, predicted_qs)
