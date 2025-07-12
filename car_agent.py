@@ -107,6 +107,7 @@ class NstepReplayBuffer(ReplayBuffer):
             super().append(replay_experience)
             self.temp_buffer.clear()
 
+
 class SumTree:
     """
     SumTree data structure that would be used for Prioritized Replay Buffer.
@@ -158,6 +159,87 @@ class SumTree:
 
     def total_priority(self):
         return self.tree[0]
+
+
+class NthstepPERBuffer:
+    """
+    Prioritized Experience Replay Buffer that gets updated every nth step
+    """
+
+    def __init__(
+        self,
+        capacity: int,
+        device: torch.device,
+        gamma: float = 0.99,
+        nstep: int = 5,
+        alpha: float = 0.6,
+        beta_start: float = 0.4,
+        beta_decay: float = 10000,
+    ):
+        self.capacity = capacity
+        self.gamma = gamma
+        self.nstep = nstep
+        self.device = device
+        self.tree = SumTree(self.capacity)
+        self.alpha = alpha
+        self.beta_start = beta_start
+        self.beta_decay = beta_decay
+        self.step = 1
+        self.counter = 1  # counter for nstep
+        self.temp_buffer: deque[Experience] = deque(
+            capacity=self.nstep
+        )  # temporary buffer for nstep replay buffer
+
+    def _decay_beta(self):
+        return min(
+            1.0,
+            self.beta_start + (1.0 - self.beta_start) * (self.step / self.beta_decay),
+        )
+
+    def append(self, exp: Experience):
+        self.temp_buffer.append(exp)
+        if len(self.temp_buffer) >= self.nstep or exp.done:
+            state = self.temp_buffer[0].state
+            action = self.temp_buffer[0].action
+            reward = sum(
+                (exper.reward * self.gamma**i)
+                for i, exper in enumerate(self.temp_buffer)
+            )
+            next_state = self.temp_buffer[-1].next_state
+            done = self.temp_buffer[-1].done
+            replay_exp = Experience(state, action, reward, next_state, done)
+
+            max_priority = np.max(self.tree.tree[-self.tree.capacity :])
+            if max_priority == 0:
+                max_priority = 1
+            self.tree.add(replay_exp, max_priority)
+            self.temp_buffer.clear()
+
+    def sample(self, k: int):
+        batch = []
+        idx = []
+        priorities = []
+
+        beta = self._decay_beta()
+        segment = self.tree.total_priority() / k
+
+        for i in range(k):
+            s = np.random.uniform(segment * i, segment * (i + 1))
+            index, data_index, data = self.tree.get_leaf(s)
+            idx.append(index)
+            priorities.append(self.tree.tree[index])
+
+        sampled_probabilites = np.array(priorities) / self.tree.total_priority()
+        is_weights = np.power(self.capacity * sampled_probabilites, -beta)
+        is_weights /= is_weights.max()
+        self.step += 1
+        return batch, idx, is_weights
+
+    def update(self, indexes, TD_errors):
+        """"""
+        for idx, error in zip(indexes, TD_errors):
+            priority = (0.2 + abs(error)) ** self.alpha
+            self.tree.update(idx, priority)
 
 
 class CarAgent:
