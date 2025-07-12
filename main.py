@@ -57,7 +57,7 @@ while True:
         obs, _ = env.reset()
         ep_count += 1
         print(
-            f"Episode: {ep_count}\tReward: {ep_reward}\tLoss: {ep_loss}\tEpsilon: {agent.epsilon_current}"
+            f"Steps: {total_steps}\tReward: {ep_reward}\tLoss: {ep_loss}\tEpsilon: {agent.epsilon_current}"
         )
         ep_reward = 0
         ep_loss = 0.0

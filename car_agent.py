@@ -107,6 +107,58 @@ class NstepReplayBuffer(ReplayBuffer):
             super().append(replay_experience)
             self.temp_buffer.clear()
 
+class SumTree:
+    """
+    SumTree data structure that would be used for Prioritized Replay Buffer.
+    """
+
+    def __init__(self, capacity: int):
+        self.capacity = capacity
+        self.tree = np.zeros(2 * capacity - 1)
+        self.data = np.zeros(capacity, dtype=object)
+        self.data_pointer = 0
+
+    def add(self, data, priority: int):
+        leaf_index = self.data_pointer + self.capacity - 1
+        self.data[self.data_pointer] = data
+        self.update(leaf_index, priority)
+
+        self.data_pointer += 1
+        if self.data_pointer >= self.capacity:
+            self.data_pointer = 0
+
+    def update(self, node_index, new_priority):
+        delta = new_priority - self.tree[node_index]
+        self.tree[node_index] = new_priority
+        self._propagate(node_index, delta)
+
+    def _propagate(self, index, delta):
+        parent = (index - 1) // 2
+        self.tree[parent] += delta
+
+        if parent != 0:
+            self._propagate(parent, delta)
+
+    def get_leaf(self, s: float):
+        index = self._retrieve(0, s)
+        data_index = index - self.capacity + 1
+        return index, data_index, self.data[data_index]
+
+    def _retrieve(self, index, s):
+        left = 2 * index + 1
+        right = left + 1
+
+        if left > len(self.tree):
+            return index
+
+        if self.tree[left] >= s:
+            return self._retrieve(left, s)
+        else:
+            return self._retrieve(right, s - self.tree[left])
+
+    def total_priority(self):
+        return self.tree[0]
+
 
 class CarAgent:
     def __init__(
