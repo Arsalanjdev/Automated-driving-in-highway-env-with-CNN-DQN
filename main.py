@@ -24,7 +24,7 @@ env = gym.make("highway-v0", config=config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 agent = CarAgent(4, 5, device)
 buffer = NthstepPERBuffer(512, device)
-optimizer = torch.optim.Adam(agent.online_net.parameters(), lr=0.0001)
+optimizer = torch.optim.Adam(agent.online_net.parameters(), lr=0.001)
 obs, _ = env.reset()
 ep_reward = 0
 total_steps = 0
@@ -34,7 +34,6 @@ while True:
     total_steps += 1
     # obs = transpose_observation(obs)
     action = agent.act(obs)
-    agent.decay_epsilon(total_steps)
     new_obs, reward, done, trunc, info = env.step(action)
     # new_obs = transpose_observation(new_obs)
     exp = Experience(obs, action, reward, new_obs, done or trunc)
@@ -62,9 +61,7 @@ while True:
     if done or trunc:
         obs, _ = env.reset()
         ep_count += 1
-        print(
-            f"Steps: {total_steps}\tReward: {ep_reward}\tLoss: {ep_loss}\tEpsilon: {agent.epsilon_current}"
-        )
+        print(f"Steps: {total_steps}\tReward: {ep_reward}\tLoss: {ep_loss}")
         ep_reward = 0
         ep_loss = 0.0
         torch.cuda.empty_cache()

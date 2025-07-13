@@ -284,26 +284,10 @@ class CarAgent:
         self.online_net = HighwayCNN(device, obs_size, action_size).to(device)
         self.target_net = HighwayCNN(device, obs_size, action_size).to(device)
         self.target_net.load_state_dict(self.online_net.state_dict())
-        self.epsilon_start = epsilon_start
-        self.epsilon_current = epsilon_start
-        self.epsilon_stop = epsilon_stop
-        self.epsilon_decay_rate = epsilon_decay_rate
         self.gamma = gamma
         self.device = device
 
-    def decay_epsilon(self, steps: int):
-        if steps > self.epsilon_decay_rate:
-            self.epsilon_current = self.epsilon_stop
-        else:
-            ratio = steps / self.epsilon_decay_rate
-            self.epsilon_current = self.epsilon_start - ratio * (
-                self.epsilon_start - self.epsilon_stop
-            )
-
     def act(self, observation):
-        if self.epsilon_current > random.random():
-            return random.randint(0, self.action_size - 1)
-        # tensorize
         obs_t: Tensor = torch.as_tensor(
             observation, dtype=torch.float32, device=self.device
         )
