@@ -129,7 +129,9 @@ class NthstepPERBuffer:
         states, actions, rewards, next_states, dones = [], [], [], [], []
         for exp in batch:
             states.append(
-                torch.as_tensor(exp.state, dtype=torch.float32, device=self.device)
+                torch.as_tensor(exp.state, dtype=torch.float32, device=self.device).div(
+                    255.0
+                )
             )
             actions.append(
                 torch.as_tensor(exp.action, dtype=torch.long, device=self.device)
@@ -138,7 +140,9 @@ class NthstepPERBuffer:
                 torch.as_tensor(exp.reward, dtype=torch.float32, device=self.device)
             )
             next_states.append(
-                torch.as_tensor(exp.next_state, dtype=torch.float32, device=self.device)
+                torch.as_tensor(
+                    exp.next_state, dtype=torch.float32, device=self.device
+                ).div(255.0)
             )
             dones.append(
                 torch.as_tensor(exp.done, dtype=torch.float32, device=self.device)
@@ -229,7 +233,7 @@ class CarAgent:
             evaluated_qs = evaluated_qs.gather(1, next_actions).squeeze(1)
         sampled_done = sampled_done.float()
 
-        TD_error = current_qs - evaluated_qs
         predicted_qs = sampled_reward + (1.0 - sampled_done) * evaluated_qs * self.gamma
+        TD_errors = (current_qs - predicted_qs).detach().abs()
 
-        return (torch.nn.SmoothL1Loss()(current_qs, predicted_qs), TD_error)
+        return (torch.nn.SmoothL1Loss()(current_qs, predicted_qs), TD_errors)

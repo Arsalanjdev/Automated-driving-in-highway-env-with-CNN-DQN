@@ -1,12 +1,7 @@
-import random
-
 import gymnasium as gym
-import highway_env
 import numpy as np
-from langchain_core.utils.mustache import render
+import highway_env
 from matplotlib import pyplot as plt
-
-from agent import DQNAgent
 import torch
 from torch import Tensor
 from car_agent import CarAgent, Experience, NthstepPERBuffer
@@ -30,7 +25,7 @@ def moving_average(data, window_size=10):
 env = gym.make("highway-v0", config=config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 agent = CarAgent(4, 5, device)
-buffer = NthstepPERBuffer(512, device)
+buffer = NthstepPERBuffer(5000, device)
 optimizer = torch.optim.Adam(agent.online_net.parameters(), lr=0.001)
 obs, _ = env.reset()
 rewards = []
@@ -49,11 +44,11 @@ try:
         buffer.append(exp)
         ep_reward += reward
 
-        if total_steps > 512 and total_steps % 4 == 0:
+        if total_steps > 1000 and total_steps % 4 == 0:
             optimizer.zero_grad()
             agent.online_net.reset_noise()
             agent.online_net.train()
-            sampled_batch_list, idx, _ = buffer.sample(128)
+            sampled_batch_list, idx, _ = buffer.sample(256)
             loss: Tensor
             TD_errors: Tensor
             batch = buffer.batch_to_tensor(sampled_batch_list)
@@ -61,6 +56,8 @@ try:
             buffer.update(idx, TD_errors)
             loss.backward()
             ep_loss += loss.item()
+            # Add gradient clipping
+            torch.nn.utils.clip_grad_norm_(agent.online_net.parameters(), max_norm=10.0)
             optimizer.step()
             torch.cuda.empty_cache()
 
@@ -90,3 +87,5 @@ except KeyboardInterrupt:
     plt.legend()
     plt.grid(True)
     plt.savefig("rewardplot.png")
+    plt.close()
+    print("Plot saved!")
