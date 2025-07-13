@@ -2,11 +2,13 @@ import random
 from collections import namedtuple
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
 
 
 class DQN_CNN(nn.Module):
-    def __init__(self, action_size, hidden_size, input_shape=(1, 4, 100, 100),
-                 filter_size=64):
+    def __init__(
+        self, action_size, hidden_size, input_shape=(1, 4, 100, 100), filter_size=64
+    ):
         super(DQN_CNN, self).__init__()
         self.input_shape = input_shape
 
@@ -33,7 +35,17 @@ class DQN_CNN(nn.Module):
         self.fc1 = nn.Linear(256 * 5 * 5, hidden_size * 2)
         self.fc2 = nn.Linear(hidden_size * 2, hidden_size)
         self.fc3 = nn.Linear(hidden_size, hidden_size // 2)
-        self.head = nn.Linear(hidden_size // 2, action_size)
+
+        self.value_stream = nn.Sequential(
+            nn.Linear(hidden_size // 2, hidden_size // 4),
+            nn.ReLU(),
+            nn.Linear(hidden_size // 4, 1),
+        )
+        self.advantage_stream = nn.Sequential(
+            nn.Linear(hidden_size // 2, hidden_size // 4),
+            nn.ReLU(),
+            nn.Linear(hidden_size // 4, action_size),
+        )
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
@@ -43,20 +55,21 @@ class DQN_CNN(nn.Module):
         x = F.relu(self.bn5(self.conv5(x)))
 
         x = self.avgpool(x)
-
         x = self.flatten(x)
 
-        # New improved FC network with careful dropout placement
         x = F.relu(self.fc1(x))
-        x = self.dropout(x)  # Only after first FC
+        x = self.dropout(x)
 
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
+        value = self.value_stream(x)
+        advantage: Tensor = self.advantage_stream(x)
+        q = value + (advantage - advantage.mean(dim=1, keepdim=True))
 
-        return self.head(x)
+        return q
 
 
-Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
+Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
 
 
 class ReplayMemory:
