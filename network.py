@@ -1,5 +1,7 @@
 import random
 from collections import namedtuple
+
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
@@ -32,20 +34,25 @@ class DQN_CNN(nn.Module):
 
         self.dropout = nn.Dropout(0.2)
 
-        self.fc1 = nn.Linear(256 * 5 * 5, hidden_size * 2)
-        self.fc2 = nn.Linear(hidden_size * 2, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, hidden_size // 2)
+        self.fc1 = NoisyLinear(256 * 5 * 5, hidden_size * 2)
+        self.fc2 = NoisyLinear(hidden_size * 2, hidden_size)
+        self.fc3 = NoisyLinear(hidden_size, hidden_size // 2)
 
         self.value_stream = nn.Sequential(
-            nn.Linear(hidden_size // 2, hidden_size // 4),
+            NoisyLinear(hidden_size // 2, hidden_size // 4),
             nn.ReLU(),
-            nn.Linear(hidden_size // 4, 1),
+            NoisyLinear(hidden_size // 4, 1),
         )
         self.advantage_stream = nn.Sequential(
-            nn.Linear(hidden_size // 2, hidden_size // 4),
+            NoisyLinear(hidden_size // 2, hidden_size // 4),
             nn.ReLU(),
-            nn.Linear(hidden_size // 4, action_size),
+            NoisyLinear(hidden_size // 4, action_size),
         )
+
+    def reset_noise(self):
+        for module in self.modules():
+            if isinstance(module, NoisyLinear):
+                module.reset_noise()
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))

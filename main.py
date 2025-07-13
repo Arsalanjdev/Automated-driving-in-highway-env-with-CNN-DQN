@@ -43,6 +43,7 @@ while True:
 
     if total_steps > 512 and total_steps % 4 == 0:
         optimizer.zero_grad()
+        agent.online_net.reset_noise()
         agent.online_net.train()
         sampled_batch_list, idx, _ = buffer.sample(128)
         loss: Tensor
