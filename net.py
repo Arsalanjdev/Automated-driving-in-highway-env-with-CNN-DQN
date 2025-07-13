@@ -84,12 +84,6 @@ class HighwayCNN(nn.Module):
         self.advantage_stream = nn.Sequential(
             NoisyLinear(128, 64), nn.ReLU(), NoisyLinear(64, num_actions)
         )
-        # self.fc_layers = nn.Sequential(
-        #     nn.Flatten(),
-        #     nn.Linear(64 * 32 * 16, 512),
-        #     nn.ReLU(),
-        #     nn.Linear(512, num_actions),
-        # )
 
     def forward(self, x):
         x: Tensor = x.to(self.device)
