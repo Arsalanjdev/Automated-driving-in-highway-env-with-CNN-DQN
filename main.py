@@ -7,7 +7,7 @@ from langchain_core.utils.mustache import render
 from agent import DQNAgent
 import torch
 from torch import Tensor
-from car_agent import CarAgent, ReplayBuffer, Experience, NthstepPERBuffer
+from car_agent import CarAgent, Experience, NthstepPERBuffer
 
 config = {
     "observation": {
