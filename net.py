@@ -85,6 +85,11 @@ class HighwayCNN(nn.Module):
             NoisyLinear(128, 64), nn.ReLU(), NoisyLinear(64, num_actions)
         )
 
+    def reset_noise(self):
+        for module in self.modules():
+            if isinstance(module, NoisyLinear):
+                module.reset_noise()
+
     def forward(self, x):
         x: Tensor = x.to(self.device)
         x = self.conv_layers(x)
