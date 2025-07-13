@@ -7,7 +7,7 @@ from langchain_core.utils.mustache import render
 from agent import DQNAgent
 import torch
 from torch import Tensor
-from car_agent import CarAgent, ReplayBuffer, Experience, NstepReplayBuffer
+from car_agent import CarAgent, ReplayBuffer, Experience, NthstepPERBuffer
 
 config = {
     "observation": {
@@ -23,7 +23,7 @@ config = {
 env = gym.make("highway-v0", config=config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 agent = CarAgent(4, 5, device)
-buffer = NstepReplayBuffer(device, maxlen=512)
+buffer = NthstepPERBuffer(512, device)
 optimizer = torch.optim.Adam(agent.online_net.parameters(), lr=0.0001)
 obs, _ = env.reset()
 ep_reward = 0
@@ -41,10 +41,15 @@ while True:
     buffer.append(exp)
     ep_reward += reward
 
-    if total_steps > 100 and total_steps % 4 == 0:
+    if total_steps > 512 and total_steps % 4 == 0:
         optimizer.zero_grad()
         agent.online_net.train()
-        loss: Tensor = agent.calculate_loss(batch=buffer)
+        sampled_batch_list, idx, _ = buffer.sample(128)
+        loss: Tensor
+        TD_errors: Tensor
+        batch = buffer.batch_to_tensor(sampled_batch_list)
+        loss, TD_errors = agent.calculate_loss(batch=batch)
+        buffer.update(idx, TD_errors)
         loss.backward()
         ep_loss += loss.item()
         optimizer.step()

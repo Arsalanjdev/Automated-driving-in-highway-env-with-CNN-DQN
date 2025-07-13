@@ -1,7 +1,7 @@
 import random
 from collections import deque
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, List
 
 import numpy as np
 import torch
@@ -123,10 +123,7 @@ class SumTree:
         leaf_index = self.data_pointer + self.capacity - 1
         self.data[self.data_pointer] = data
         self.update(leaf_index, priority)
-
-        self.data_pointer += 1
-        if self.data_pointer >= self.capacity:
-            self.data_pointer = 0
+        self.data_pointer = (self.data_pointer + 1) % self.capacity
 
     def update(self, node_index, new_priority):
         delta = new_priority - self.tree[node_index]
@@ -134,11 +131,10 @@ class SumTree:
         self._propagate(node_index, delta)
 
     def _propagate(self, index, delta):
-        parent = (index - 1) // 2
-        self.tree[parent] += delta
-
-        if parent != 0:
-            self._propagate(parent, delta)
+        while index > 0:
+            parent = (index - 1) // 2
+            self.tree[parent] += delta
+            index = parent
 
     def get_leaf(self, s: float):
         index = self._retrieve(0, s)
@@ -146,13 +142,13 @@ class SumTree:
         return index, data_index, self.data[data_index]
 
     def _retrieve(self, index, s):
+        if index >= self.capacity - 1:  # Leaf node
+            return index
+
         left = 2 * index + 1
         right = left + 1
 
-        if left > len(self.tree):
-            return index
-
-        if self.tree[left] >= s:
+        if s <= self.tree[left]:
             return self._retrieve(left, s)
         else:
             return self._retrieve(right, s - self.tree[left])
@@ -187,10 +183,10 @@ class NthstepPERBuffer:
         self.step = 1
         self.counter = 1  # counter for nstep
         self.temp_buffer: deque[Experience] = deque(
-            capacity=self.nstep
+            maxlen=self.nstep
         )  # temporary buffer for nstep replay buffer
 
-    def _decay_beta(self):
+    def _decay_beta(self) -> float:
         return min(
             1.0,
             self.beta_start + (1.0 - self.beta_start) * (self.step / self.beta_decay),
@@ -198,47 +194,78 @@ class NthstepPERBuffer:
 
     def append(self, exp: Experience):
         self.temp_buffer.append(exp)
-        if len(self.temp_buffer) >= self.nstep or exp.done:
+
+        # Check if ready to form n-step experience
+        if exp.done or len(self.temp_buffer) == self.nstep:
             state = self.temp_buffer[0].state
             action = self.temp_buffer[0].action
             reward = sum(
-                (exper.reward * self.gamma**i)
-                for i, exper in enumerate(self.temp_buffer)
+                exp.reward * (self.gamma**i) for i, exp in enumerate(self.temp_buffer)
             )
             next_state = self.temp_buffer[-1].next_state
             done = self.temp_buffer[-1].done
             replay_exp = Experience(state, action, reward, next_state, done)
 
+            # Prioritize with max existing priority or 1.0
             max_priority = np.max(self.tree.tree[-self.tree.capacity :])
-            if max_priority == 0:
-                max_priority = 1
+            max_priority = max_priority if max_priority > 0 else 1.0
             self.tree.add(replay_exp, max_priority)
             self.temp_buffer.clear()
 
-    def sample(self, k: int):
+    def batch_to_tensor(
+        self, batch: list[Experience]
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        states, actions, rewards, next_states, dones = [], [], [], [], []
+        for exp in batch:
+            states.append(
+                torch.as_tensor(exp.state, dtype=torch.float32, device=self.device)
+            )
+            actions.append(
+                torch.as_tensor(exp.action, dtype=torch.long, device=self.device)
+            )
+            rewards.append(
+                torch.as_tensor(exp.reward, dtype=torch.float32, device=self.device)
+            )
+            next_states.append(
+                torch.as_tensor(exp.next_state, dtype=torch.float32, device=self.device)
+            )
+            dones.append(
+                torch.as_tensor(exp.done, dtype=torch.float32, device=self.device)
+            )
+        return (
+            torch.stack(states),
+            torch.stack(actions),
+            torch.stack(rewards),
+            torch.stack(next_states),
+            torch.stack(dones),
+        )
+
+    def sample(self, batch_size: int) -> Tuple[List[Experience], List[int], np.ndarray]:
         batch = []
-        idx = []
+        indices = []
         priorities = []
-
         beta = self._decay_beta()
-        segment = self.tree.total_priority() / k
+        segment = self.tree.total_priority() / batch_size
 
-        for i in range(k):
-            s = np.random.uniform(segment * i, segment * (i + 1))
-            index, data_index, data = self.tree.get_leaf(s)
-            idx.append(index)
-            priorities.append(self.tree.tree[index])
+        for i in range(batch_size):
+            low = segment * i
+            high = segment * (i + 1)
+            s = np.random.uniform(low, high)
+            idx, _, exp = self.tree.get_leaf(s)
+            indices.append(idx)
+            priorities.append(self.tree.tree[idx])
+            batch.append(exp)
 
-        sampled_probabilites = np.array(priorities) / self.tree.total_priority()
-        is_weights = np.power(self.capacity * sampled_probabilites, -beta)
-        is_weights /= is_weights.max()
+        priorities_arr = np.array(priorities)
+        probs = priorities_arr / self.tree.total_priority()
+        is_weights = np.power(self.capacity * probs, -beta)
+        is_weights /= is_weights.max()  # Normalize for stability
         self.step += 1
-        return batch, idx, is_weights
+        return batch, indices, is_weights
 
-    def update(self, indexes, TD_errors):
-        """"""
-        for idx, error in zip(indexes, TD_errors):
-            priority = (0.2 + abs(error)) ** self.alpha
+    def update(self, indices: List[int], errors: Tensor):
+        for idx, error in zip(indices, errors):
+            priority = (1e-5 + abs(error)) ** self.alpha
             self.tree.update(idx, priority)
 
 
@@ -287,14 +314,16 @@ class CarAgent:
             best_q = qs.argmax(dim=1)
         return best_q.item()
 
-    def calculate_loss(self, batch: ReplayBuffer, k: int = 128):
+    def calculate_loss(
+        self, batch: tuple[Tensor, Tensor, Tensor, Tensor, Tensor], k: int = 128
+    ):
         (
             sampled_state,
             sampled_action,
             sampled_reward,
             sampled_next_state,
             sampled_done,
-        ) = batch.sample(k)
+        ) = batch
         sampled_action: Tensor = sampled_action.unsqueeze(1)
         current_qs: Tensor = self.online_net(sampled_state)
         current_qs = current_qs.gather(1, sampled_action).squeeze(1)
@@ -308,6 +337,7 @@ class CarAgent:
             evaluated_qs = evaluated_qs.gather(1, next_actions).squeeze(1)
         sampled_done = sampled_done.float()
 
+        TD_error = current_qs - evaluated_qs
         predicted_qs = sampled_reward + (1.0 - sampled_done) * evaluated_qs * self.gamma
 
-        return torch.nn.SmoothL1Loss()(current_qs, predicted_qs)
+        return (torch.nn.SmoothL1Loss()(current_qs, predicted_qs), TD_error)
